@@ -68,42 +68,173 @@ final_kmeans = KMeans(n_clusters=optimal_k,
                       init='k-means++', random_state=42, n_init=10)
 rfm["KMeans_Cluster"] = final_kmeans.fit_predict(rfm_scaled)
 
-# 5. Map Clusters to Personas
-persona_mapping = {
-    0: "Champions / VIPs",          # Lowest Recency, Highest Frequency & Monetary
-    1: "Hibernating / Lost",        # Highest Recency, Lowest Frequency & Monetary
-    # Low Recency (Recent), but low Frequency/Monetary yet
-    2: "New / Promising Customers",
-    3: "Loyal / Need Attention"     # Moderate stats across the board
-}
-rfm["KMeans_Persona"] = rfm["KMeans_Cluster"].map(persona_mapping)
+# ==============================================================================
+# EXPLORATORY INTERMEDIATE CHARTS (Snake Plot, Bar Chart, Box & Whisker)
+# ==============================================================================
+print("📊 Generating exploratory cluster visualizations...")
 
-# Save the final file
-rfm.to_csv(kmeans_output_path, index=False)
-print(f"🚀 K-Means clustering complete! Saved to: {kmeans_output_path}")
+# Define image output folder
+charts_dir = Path("outputs/charts/exploratory")
+charts_dir.mkdir(parents=True, exist_ok=True)
 
-# ... (Your scaling and K-Means training math goes here) ...
+# Define a temporary dataframe for plotting normalized behaviors
+rfm_scaled_df = pd.DataFrame(
+    rfm_scaled, columns=["Recency", "Frequency", "Monetary"])
+rfm_scaled_df["Cluster"] = rfm["KMeans_Cluster"]
 
-# 1. The computer calculates the clusters right here in memory
-rfm["KMeans_Cluster"] = final_kmeans.fit_predict(rfm_scaled)
-rfm["KMeans_Persona"] = rfm["KMeans_Cluster"].map(persona_mapping)
-
-# 2. GENERATE THE GRAPH NOW (Before saving the file to your hard drive!)
+# ------------------------------------------------------------------------------
+# 1. THE SNAKE PLOT (Line plot of scaled RFM features across clusters)
+# ------------------------------------------------------------------------------
+# Melt the data into a long format that seaborn can interpret easily
+snake_df = pd.melt(
+    rfm_scaled_df,
+    id_vars=['Cluster'],
+    value_vars=['Recency', 'Frequency', 'Monetary'],
+    var_name='Metric',
+    value_name='Scaled_Value'
+)
 
 plt.figure(figsize=(10, 6))
-sns.scatterplot(
-    data=rfm,
-    x="Recency",
-    y="Monetary",
-    hue="KMeans_Persona",  # ◄── The computer uses the in-memory column to color the dots
-    palette="viridis"
-)
-plt.title("Customer Clusters")
-plt.savefig("outputs/charts/customer_clusters.png", dpi=300)
+sns.lineplot(data=snake_df, x='Metric', y='Scaled_Value',
+             hue='Cluster', palette='Set1', marker='o', linewidth=2.5)
+plt.title('Snake Plot: Normalized RFM Profile Lines Across Clusters',
+          fontsize=14, pad=15)
+plt.xlabel('RFM Metric', fontsize=12)
+plt.ylabel('Scaled Normalized Value', fontsize=12)
+plt.legend(title='Cluster ID', loc='upper right')
+plt.tight_layout()
+plt.savefig(charts_dir / "kmeans_snake_plot.png", dpi=300)
 plt.close()
+print(f"   🐍 Snake Plot saved to: {charts_dir / 'kmeans_snake_plot.png'}")
 
-print("📊 Cluster Graph successfully created and saved to outputs/charts/!")
 
-# 3. NOW FORM AND SAVE THE FINAL TABLE
-rfm.to_csv(kmeans_output_path, index=False)
-print("💾 Final CSV Table formed and saved!")
+# ------------------------------------------------------------------------------
+# 2. THE BAR CHART (Average Raw Value Profile for Recency, Frequency, Monetary)
+# ------------------------------------------------------------------------------
+# Calculate raw averages per cluster to display actual business values
+raw_averages = rfm.groupby('KMeans_Cluster')[
+    ['Recency', 'Frequency', 'Monetary']].mean().reset_index()
+
+# We will create subplots to show all three metrics clearly side-by-side
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+metrics_list = ['Recency', 'Frequency', 'Monetary']
+titles = ['Avg Recency (Days)', 'Avg Frequency (Orders)',
+          'Avg Monetary (Spend $)']
+colors = ['#4A90E2', '#50E3C2', '#F5A623']
+
+for i, metric in enumerate(metrics_list):
+    sns.barplot(data=raw_averages, x='KMeans_Cluster', y=metric,
+                ax=axes[i], color=colors[i], edgecolor='black')
+    axes[i].set_title(titles[i], fontsize=12, pad=10)
+    axes[i].set_xlabel('Cluster ID', fontsize=10)
+    axes[i].set_ylabel('')
+
+plt.suptitle('Cluster Profiles Comparison (Raw Means)', fontsize=14, y=1.02)
+plt.tight_layout()
+fig.savefig(charts_dir / "kmeans_raw_bar_charts.png",
+            dpi=300, bbox_inches='tight')
+plt.close()
+print(f"   📊 Bar Charts saved to: {charts_dir / 'kmeans_raw_bar_charts.png'}")
+
+
+# ------------------------------------------------------------------------------
+# 3. BOX-AND-WHISKER PLOT (Detecting overlaps and distribution spreads)
+# ------------------------------------------------------------------------------
+fig, axes = plt.subplots(1, 3, figsize=(16, 6))
+
+# Boxplot for Recency
+sns.boxplot(data=rfm, x='KMeans_Cluster', y='Recency',
+            ax=axes[0], palette='Set2', hue='KMeans_Cluster', legend=False, showfliers=False)
+axes[0].set_title('Recency Distribution Spread', fontsize=12)
+# Log scale helps deal with long-tail outlier points visually
+axes[0].set_yscale('log')
+
+# Boxplot for Frequency
+sns.boxplot(data=rfm, x='KMeans_Cluster', y='Frequency',
+            ax=axes[1], palette='Set2', hue='KMeans_Cluster', legend=False, showfliers=False)
+axes[1].set_title('Frequency Distribution Spread', fontsize=12)
+axes[1].set_yscale('log')
+
+# Boxplot for Monetary
+sns.boxplot(data=rfm, x='KMeans_Cluster', y='Monetary',
+            ax=axes[2], palette='Set2', hue='KMeans_Cluster', legend=False, showfliers=False)
+axes[2].set_title('Monetary Distribution Spread', fontsize=12)
+axes[2].set_yscale('log')
+
+plt.suptitle(
+    'Distribution Dispersions and Outliers Across Clusters', fontsize=14, y=1.02)
+plt.tight_layout()
+fig.savefig(charts_dir / "kmeans_box_plots.png", dpi=300, bbox_inches='tight')
+plt.close()
+print(
+    f"   📦 Box & Whisker Plots saved to: {charts_dir / 'kmeans_box_plots.png'}")
+print("=" * 80)
+
+# ==============================================================================
+# BULLETPROOF DYNAMIC PERSONA MAPPING (Multi-Metric Automation)
+# ==============================================================================
+
+print("🔄 Computing multi-metric fitness scores to safely isolate personas...")
+
+# 1. Calculate the raw averages for each cluster
+cluster_stats = rfm.groupby("KMeans_Cluster").agg(
+    Avg_Recency=("Recency", "mean"),
+    Avg_Frequency=("Frequency", "mean"),
+    Avg_Monetary=("Monetary", "mean")
+)
+
+# 2. Calculate a combined score: (Frequency * Monetary) / Recency
+# This ensures VIPs MUST have high spend/frequency AND excellent low recency days
+cluster_stats["Fitness_Score"] = (
+    cluster_stats["Avg_Frequency"] * cluster_stats["Avg_Monetary"]) / cluster_stats["Avg_Recency"]
+
+# 3. Rank the cluster IDs based on this combined score from highest to lowest
+# The true all-around elite VIP group will ALWAYS be index 0
+ranked_clusters = cluster_stats.sort_values(
+    by="Fitness_Score", ascending=False).index
+
+# 4. Map the dynamic labels perfectly
+dynamic_mapping = {
+    # Highest overall health/activity score
+    ranked_clusters[0]: "Champions / VIPs",
+    # Good metrics, but starting to lag or lower spend
+    ranked_clusters[1]: "Loyal / Need Attention",
+    # Great recency, but low frequency/spend so far
+    ranked_clusters[2]: "New / Promising Customers",
+    # Worst scores across all axes
+    ranked_clusters[3]: "Hibernating / Lost"
+}
+
+# 5. Apply to the table
+rfm["KMeans_Persona"] = rfm["KMeans_Cluster"].map(dynamic_mapping)
+print("✅ Fully automated multi-metric clustering complete! No human bias or hard-coding.")
+
+# Define output file paths
+summary_table_path = Path("outputs/tables/kmeans_persona_summary.csv")
+final_data_path = Path("data/processed/kmeans_segments.csv")
+
+# Ensure output directories exist
+summary_table_path.parent.mkdir(parents=True, exist_ok=True)
+final_data_path.parent.mkdir(parents=True, exist_ok=True)
+
+# 1. Generate the mathematical profile summary for your persona clusters
+final_summary = rfm.groupby("KMeans_Persona").agg(
+    Customer_Count=("CustomerID", "count"),
+    Avg_Recency_Days=("Recency", "mean"),
+    Avg_Frequency_Orders=("Frequency", "mean"),
+    Avg_Monetary_Spend=("Monetary", "mean")
+).round(2).reset_index()
+
+# 2. Save the final automated summary table
+final_summary.to_csv(summary_table_path, index=False)
+print(f"📊 Summary profile metrics saved to: {summary_table_path}")
+
+# 3. Save the full customer database with their automated persona stamps
+rfm.to_csv(final_data_path, index=False)
+print(f"💾 Full customer dataset with dynamic tags saved to: {final_data_path}")
+
+# 4. Print a live validation preview right to your console window
+print("\n🔍 Live Pipeline Verification Preview:")
+print("=" * 80)
+print(final_summary.to_string(index=False))
+print("=" * 80)
