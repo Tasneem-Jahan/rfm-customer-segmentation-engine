@@ -196,13 +196,13 @@ ranked_clusters = cluster_stats.sort_values(
 # 4. Map the dynamic labels perfectly
 dynamic_mapping = {
     # Highest overall health/activity score
-    ranked_clusters[0]: "Champions / VIPs",
+    ranked_clusters[0]: "VIPs",
     # Good metrics, but starting to lag or lower spend
-    ranked_clusters[1]: "Loyal / Need Attention",
+    ranked_clusters[1]: "Hibernating",
     # Great recency, but low frequency/spend so far
-    ranked_clusters[2]: "New / Promising Customers",
+    ranked_clusters[2]: "New Customers",
     # Worst scores across all axes
-    ranked_clusters[3]: "Hibernating / Lost"
+    ranked_clusters[3]: "Needs Attention"
 }
 
 # 5. Apply to the table
